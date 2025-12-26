@@ -1,0 +1,199 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum untuk Role User (sesuai AppRole di main.mo)
+enum Role {
+  OWNER
+  MANAGER
+  CASHIER
+}
+
+model User {
+  id        String   @id @default(uuid()) // Menggantikan Principal
+  email     String   @unique
+  password  String   // Perlu di-hash (bcrypt)
+  name      String
+  role      Role     @default(CASHIER)
+  outletId  Int?
+  outlet    Outlet?  @relation(fields: [outletId], references: [id])
+  
+  transactions Transaction[]
+  stockLogs    StockLog[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Outlet {
+  id        Int      @id @default(autoincrement())
+  name      String
+  address   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  users        User[]
+  products     Product[]
+  transactions Transaction[]
+  stockLogs    StockLog[]
+  packages     ProductPackage[]
+  bundles      Bundle[]
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  products    Product[]
+}
+
+model Brand {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  products    Product[]
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  price       BigInt   // Menggunakan BigInt sesuai Nat di Motoko
+  stock       Int
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  outletId    Int
+  outlet      Outlet   @relation(fields: [outletId], references: [id])
+  
+  categoryId  Int?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  
+  brandId     Int?
+  brand       Brand?    @relation(fields: [brandId], references: [id])
+
+  transactionItems TransactionItem[]
+  packageComponents PackageComponent[]
+  bundleItems      BundleItem[]
+  stockLogs        StockLog[]
+}
+
+model ProductPackage {
+  id          Int      @id @default(autoincrement())
+  name        String
+  price       BigInt
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  
+  outletId    Int
+  outlet      Outlet   @relation(fields: [outletId], references: [id])
+  
+  components  PackageComponent[]
+  bundleItems BundleItem[] // Paket bisa jadi item dalam bundle
+}
+
+model PackageComponent {
+  id          Int @id @default(autoincrement())
+  packageId   Int
+  package     ProductPackage @relation(fields: [packageId], references: [id])
+  productId   Int
+  product     Product @relation(fields: [productId], references: [id])
+  quantity    Int
+}
+
+model Bundle {
+  id          Int      @id @default(autoincrement())
+  name        String
+  price       BigInt
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  
+  outletId    Int
+  outlet      Outlet   @relation(fields: [outletId], references: [id])
+  
+  items       BundleItem[]
+}
+
+model BundleItem {
+  id          Int @id @default(autoincrement())
+  bundleId    Int
+  bundle      Bundle @relation(fields: [bundleId], references: [id])
+  
+  // Item bisa berupa Product atau Package
+  isPackage   Boolean
+  productId   Int?
+  product     Product? @relation(fields: [productId], references: [id])
+  packageId   Int?
+  package     ProductPackage? @relation(fields: [packageId], references: [id])
+  
+  quantity    Int
+}
+
+model Transaction {
+  id             Int      @id @default(autoincrement())
+  total          BigInt
+  timestamp      DateTime @default(now())
+  
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  
+  outletId       Int
+  outlet         Outlet   @relation(fields: [outletId], references: [id])
+  
+  items          TransactionItem[]
+  paymentMethods PaymentMethod[]
+}
+
+model TransactionItem {
+  id            Int @id @default(autoincrement())
+  transactionId Int
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  
+  productId     Int
+  product       Product @relation(fields: [productId], references: [id])
+  
+  quantity      Int
+  price         BigInt
+  isPackage     Boolean @default(false)
+  isBundle      Boolean @default(false)
+}
+
+model PaymentMethod {
+  id            Int @id @default(autoincrement())
+  transactionId Int
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  
+  category      String // 'offline', 'online', etc.
+  subCategory   String? // 'qris', 'ewallet', etc.
+  methodName    String
+  amount        BigInt
+}
+
+model StockLog {
+  id            Int      @id @default(autoincrement())
+  operation     String   // 'add', 'reduce', 'transfer', 'transaction'
+  quantity      Int
+  timestamp     DateTime @default(now())
+  
+  productId     Int
+  product       Product  @relation(fields: [productId], references: [id])
+  
+  outletId      Int
+  outlet        Outlet   @relation(fields: [outletId], references: [id])
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  
+  // Opsional untuk transfer
+  fromOutletId  Int?
+  toOutletId    Int?
+}
